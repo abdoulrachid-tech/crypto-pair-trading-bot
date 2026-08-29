@@ -1,0 +1,47 @@
+version: "3.8"
+
+# Mission 4 (PostgreSQL) et Mission 13 (MongoDB) du guide.
+# Usage : docker compose up -d
+# Ces deux services suffisent pour développer en local. Le bot Python,
+# le backend Express et le frontend React tournent, eux, directement sur la
+# machine hôte (voir les README de chaque sous-dossier) — ils ne sont
+# conteneurisés que lors du déploiement VPS (Mission 16).
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: trading_pg_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trading_data
+      POSTGRES_USER: dev_user
+      POSTGRES_PASSWORD: my_strong_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev_user -d trading_data"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7
+    container_name: trading_mongo_db
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: trading_bot
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pg_data:
+  mongo_data:
