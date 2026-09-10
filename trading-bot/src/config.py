@@ -56,6 +56,11 @@ class Settings:
 
     # Exécution
     trading_mode: str = os.getenv("TRADING_MODE", "simulation")  # "simulation" | "live"
+    # Second interrupteur, distinct de TRADING_MODE, qui doit être positionné
+    # explicitement à "true" pour que le mode live soit réellement actif.
+    # Objectif : qu'un TRADING_MODE=live posé par erreur (mauvais fichier .env,
+    # copier-coller, etc.) n'envoie jamais d'ordre réel tout seul.
+    live_trading_confirmed: bool = field(default_factory=lambda: _get_bool("LIVE_TRADING_CONFIRMED", False))
     trade_size_quote: float = field(default_factory=lambda: _get_float("TRADE_SIZE_QUOTE", 100.0))
     min_seconds_between_trades: int = field(default_factory=lambda: _get_int("MIN_SECONDS_BETWEEN_TRADES", 60))
 
@@ -80,7 +85,7 @@ class Settings:
 
     @property
     def is_live(self) -> bool:
-        return self.trading_mode.strip().lower() == "live"
+        return self.trading_mode.strip().lower() == "live" and self.live_trading_confirmed
 
 
 settings = Settings()

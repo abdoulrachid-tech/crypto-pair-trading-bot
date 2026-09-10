@@ -151,8 +151,30 @@ class TradingBot:
             time.sleep(settings.cycle_interval_seconds)
 
 
+def _warn_if_live():
+    mode_requested = settings.trading_mode.strip().lower() == "live"
+    if mode_requested and not settings.is_live:
+        logger.warning(
+            "TRADING_MODE=live demandé mais LIVE_TRADING_CONFIRMED n'est pas à 'true' : "
+            "le bot reste en SIMULATION par sécurité. Voir trading-bot/.env.example."
+        )
+    elif settings.is_live:
+        logger.warning(
+            "\n"
+            "==================================================================\n"
+            "  MODE LIVE ACTIF — des ordres RÉELS seront envoyés à %s.\n"
+            "  Capital exposé par trade : ~%.2f (TRADE_SIZE_QUOTE) sur %s / %s.\n"
+            "  Assurez-vous d'avoir validé la stratégie en simulation/backtest\n"
+            "  au préalable. Ctrl+C dans les 10 prochaines secondes pour annuler.\n"
+            "==================================================================",
+            settings.exchange_id, settings.trade_size_quote, settings.symbol_a, settings.symbol_b,
+        )
+        time.sleep(10)
+
+
 def main():
     monitor.setup_logging()
+    _warn_if_live()
     bot = TradingBot()
     bot.run_forever()
 

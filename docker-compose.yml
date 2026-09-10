@@ -8,6 +8,9 @@ version: "3.8"
 # conteneurisés que lors du déploiement VPS (Mission 16).
 
 services:
+  # Optionnel : si vous utilisez un PostgreSQL natif (installé directement sur
+  # la machine, voir section "PostgreSQL natif" du README), n'incluez pas ce
+  # service et démarrez uniquement mongo : `docker compose up -d mongo`.
   postgres:
     image: postgres:15-alpine
     container_name: trading_pg_db
