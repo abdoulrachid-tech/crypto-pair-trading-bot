@@ -26,6 +26,11 @@ export const botApi = {
   getStatus: () => api.get('/bot/status'),
   getPerformance: () => api.get('/bot/performance'),
   getSnapshots: (limit = 300) => api.get('/bot/snapshots', { params: { limit } }),
+  getConfig: () => api.get('/bot/config'),
+  setManualOverride: (paused, reason = '') => api.post('/bot/config/override', { paused, reason }),
+  startProcess: () => api.post('/bot/process/start'),
+  stopProcess: () => api.post('/bot/process/stop'),
+  getProcessStatus: () => api.get('/bot/process/status'),
 };
 
 export default api;

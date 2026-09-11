@@ -29,13 +29,17 @@ stratégie (Missions 8-9) avant toute mise en production.
 - **Backtesting robuste** avec sizing de position réaliste, frais de
   transaction, validation in-sample / out-of-sample.
 - **Bot temps réel** (Python + CCXT) : génération de signaux, exécution
-  simulée ou réelle, recalibrage automatique périodique avec garde-fous de
-  désactivation.
+  simulée ou réelle, recalibrage automatique périodique. Le suivi des prix
+  reste actif même quand la cointégration est temporairement invalide —
+  seule la génération de signaux/exécution est mise en pause dans ce cas.
 - **API backend sécurisée** (Express.js + MongoDB) : authentification JWT via
-  cookies HttpOnly, persistance des logs/trades/statut.
-- **Dashboard de monitoring** (React) : PnL cumulé, Z-score en temps réel,
-  historique des trades, logs.
-- **Suite de tests** : 19 tests Python (pytest), 25 tests backend (Jest), 6
+  cookies HttpOnly, persistance des logs/trades/statut/configuration.
+- **Dashboard de monitoring** (React) : prix BTC/ETH en continu, PnL cumulé,
+  Z-score en temps réel, historique des trades, logs.
+- **Page Réglages** : configuration active du bot (paire, seuils, mode
+  d'exécution...) en lecture seule, et un **coupe-circuit manuel** pour
+  mettre le trading en pause depuis l'interface sans toucher au serveur.
+- **Suite de tests** : 19 tests Python (pytest), 29 tests backend (Jest), 6
   tests frontend (Vitest) — tous exécutés et passants au moment de la livraison.
 
 ## Architecture

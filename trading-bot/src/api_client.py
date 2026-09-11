@@ -76,3 +76,39 @@ def push_snapshot(snapshot: dict) -> bool:
     except requests.RequestException as exc:
         logger.debug("Impossible de pousser le snapshot vers l'API backend : %s", exc)
         return False
+
+
+def push_config(config: dict) -> bool:
+    """Rapporte la configuration active du bot (visible en lecture seule dans l'interface)."""
+    try:
+        resp = requests.post(
+            f"{settings.backend_api_url}/bot/config/report",
+            json=config,
+            headers=_headers(),
+            timeout=5,
+        )
+        return resp.ok
+    except requests.RequestException as exc:
+        logger.debug("Impossible de rapporter la configuration à l'API backend : %s", exc)
+        return False
+
+
+def fetch_manual_override() -> dict:
+    """
+    Interroge le coupe-circuit manuel piloté depuis l'interface.
+    Best-effort : si l'API est injoignable, on considère qu'il n'y a pas de
+    pause manuelle plutôt que de bloquer le bot sur un souci réseau côté
+    backend (le garde-fou de cointégration, lui, reste toujours actif
+    indépendamment de cet appel).
+    """
+    try:
+        resp = requests.get(
+            f"{settings.backend_api_url}/bot/config/control",
+            headers=_headers(),
+            timeout=5,
+        )
+        if resp.ok:
+            return resp.json().get("manualOverride") or {}
+    except requests.RequestException as exc:
+        logger.debug("Impossible de récupérer le coupe-circuit manuel : %s", exc)
+    return {}

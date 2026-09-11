@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import TradesHistory from './pages/TradesHistory';
 import Logs from './pages/Logs';
+import Settings from './pages/Settings';
 
 export default function App() {
   return (
@@ -27,6 +28,7 @@ export default function App() {
             <Route index element={<Dashboard />} />
             <Route path="trades" element={<TradesHistory />} />
             <Route path="logs" element={<Logs />} />
+            <Route path="settings" element={<Settings />} />
           </Route>
         </Routes>
       </AuthProvider>

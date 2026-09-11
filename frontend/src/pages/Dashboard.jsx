@@ -50,6 +50,12 @@ export default function Dashboard() {
 
       {error && <div className="panel" style={{ color: 'var(--red)' }}>{error}</div>}
 
+      {status?.isRunning && status?.meta?.tradingEnabled === false && (
+        <div className="panel" style={{ borderColor: '#facc15', color: '#facc15' }}>
+          ⏸️ Trading en pause — {status.meta.reason || 'cointégration invalide'}. Les prix continuent d'être suivis ci-dessous.
+        </div>
+      )}
+
       <StatCards performance={performance} status={status} />
 
       <div className="panel">

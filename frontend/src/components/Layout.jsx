@@ -12,6 +12,7 @@ export default function Layout() {
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/trades">Historique des trades</NavLink>
           <NavLink to="/logs">Logs</NavLink>
+          <NavLink to="/settings">Réglages</NavLink>
         </nav>
         <div style={{ marginTop: 40, fontSize: 12, color: 'var(--text-dim)' }}>
           Connecté : {user?.email}

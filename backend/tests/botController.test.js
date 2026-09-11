@@ -1,12 +1,15 @@
 jest.mock('../src/models/Trade');
 jest.mock('../src/models/BotLog');
 jest.mock('../src/models/BotStatus');
+jest.mock('../src/models/BotConfig');
 
 const Trade = require('../src/models/Trade');
 const BotLog = require('../src/models/BotLog');
 const BotStatus = require('../src/models/BotStatus');
+const BotConfig = require('../src/models/BotConfig');
 const {
   createTrade, listTrades, createLog, updateStatus, getPerformance,
+  reportConfig, getConfig, setManualOverride,
 } = require('../src/controllers/botController');
 
 function mockRes() {
@@ -132,5 +135,59 @@ describe('getPerformance', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body.nTrades).toBe(0);
     expect(res.body.winRate).toBe(0);
+  });
+});
+
+describe('reportConfig', () => {
+  test('rapporte la config sans jamais écraser le coupe-circuit manuel', async () => {
+    BotConfig.findOneAndUpdate.mockResolvedValue({ botId: 'default', symbolA: 'BTC/USDT' });
+    const req = { body: { symbolA: 'BTC/USDT', symbolB: 'ETH/USDT', manualOverride: { paused: true } } };
+    const res = mockRes();
+
+    await reportConfig(req, res);
+
+    expect(res.statusCode).toBe(200);
+    const [, update] = BotConfig.findOneAndUpdate.mock.calls[0];
+    expect(update.$set.manualOverride).toBeUndefined();
+    expect(update.$set.symbolA).toBe('BTC/USDT');
+  });
+});
+
+describe('getConfig', () => {
+  test('retourne une config par défaut (non en pause) si rien en base', async () => {
+    BotConfig.findOne.mockResolvedValue(null);
+    const req = { query: {} };
+    const res = mockRes();
+
+    await getConfig(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.manualOverride.paused).toBe(false);
+  });
+});
+
+describe('setManualOverride', () => {
+  test('refuse une requête sans champ "paused" booléen (400)', async () => {
+    const req = { body: { reason: 'test' }, user: { email: 'a@b.com' } };
+    const res = mockRes();
+
+    await setManualOverride(req, res);
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  test("enregistre la pause avec l'email de l'utilisateur authentifié", async () => {
+    BotConfig.findOneAndUpdate.mockResolvedValue({ manualOverride: { paused: true, reason: 'maintenance', updatedBy: 'a@b.com' } });
+    const req = { body: { paused: true, reason: 'maintenance' }, user: { email: 'a@b.com' } };
+    const res = mockRes();
+
+    await setManualOverride(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(BotConfig.findOneAndUpdate).toHaveBeenCalledWith(
+      { botId: 'default' },
+      { $set: { manualOverride: { paused: true, reason: 'maintenance', updatedBy: 'a@b.com' } } },
+      { new: true, upsert: true }
+    );
   });
 });

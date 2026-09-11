@@ -2,6 +2,8 @@ const BotLog = require('../models/BotLog');
 const Trade = require('../models/Trade');
 const BotStatus = require('../models/BotStatus');
 const MarketSnapshot = require('../models/MarketSnapshot');
+const BotConfig = require('../models/BotConfig');
+const botProcess = require('../services/botProcess');
 
 // --- Logs -------------------------------------------------------------
 
@@ -155,10 +157,88 @@ async function listSnapshots(req, res) {
   }
 }
 
+// --- Configuration du bot (paramètres actifs + coupe-circuit manuel) ---
+
+async function reportConfig(req, res) {
+  try {
+    const { botId = 'default', ...activeParams } = req.body;
+    // On ne laisse jamais le bot écraser le coupe-circuit manuel en rapportant sa config.
+    delete activeParams.manualOverride;
+    const config = await BotConfig.findOneAndUpdate(
+      { botId },
+      { $set: activeParams },
+      { new: true, upsert: true }
+    );
+    return res.json(config);
+  } catch (err) {
+    return res.status(500).json({ error: 'Erreur lors de la mise à jour de la configuration.', details: err.message });
+  }
+}
+
+async function getConfig(req, res) {
+  try {
+    const botId = req.query.botId || 'default';
+    const config = await BotConfig.findOne({ botId });
+    return res.json(config || { botId, manualOverride: { paused: false, reason: '' } });
+  } catch (err) {
+    return res.status(500).json({ error: 'Erreur lors de la récupération de la configuration.', details: err.message });
+  }
+}
+
+async function setManualOverride(req, res) {
+  try {
+    const { botId = 'default', paused, reason = '' } = req.body;
+    if (typeof paused !== 'boolean') {
+      return res.status(400).json({ error: 'Le champ "paused" (booléen) est requis.' });
+    }
+    const config = await BotConfig.findOneAndUpdate(
+      { botId },
+      { $set: { manualOverride: { paused, reason, updatedBy: req.user?.email || 'inconnu' } } },
+      { new: true, upsert: true }
+    );
+    return res.json(config);
+  } catch (err) {
+    return res.status(500).json({ error: 'Erreur lors de la mise à jour du coupe-circuit.', details: err.message });
+  }
+}
+
+// --- Contrôle du process bot (démarrage/arrêt natif local) ---
+
+async function startBotProcess(req, res) {
+  try {
+    const status = botProcess.start();
+    return res.json(status);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+async function stopBotProcess(req, res) {
+  try {
+    const status = await botProcess.stop();
+    // Le process ne pouvant plus se signaler lui-même une fois arrêté depuis
+    // l'extérieur, on force isRunning=false directement ici.
+    await BotStatus.findOneAndUpdate(
+      { botId: 'default' },
+      { $set: { isRunning: false, meta: { tradingEnabled: false, reason: "Arrêté manuellement depuis l'interface" } } },
+      { upsert: true }
+    );
+    return res.json(status);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+}
+
+function getBotProcessStatus(req, res) {
+  return res.json(botProcess.getStatus());
+}
+
 module.exports = {
   createLog, listLogs,
   createTrade, listTrades,
   updateStatus, getStatus,
   getPerformance,
   createSnapshot, listSnapshots,
+  reportConfig, getConfig, setManualOverride,
+  startBotProcess, stopBotProcess, getBotProcessStatus,
 };

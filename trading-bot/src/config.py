@@ -75,6 +75,11 @@ class Settings:
     # Cycle
     cycle_interval_seconds: int = field(default_factory=lambda: _get_int("CYCLE_INTERVAL_SECONDS", 300))
     recalibration_interval_hours: int = field(default_factory=lambda: _get_int("RECALIBRATION_INTERVAL_HOURS", 168))
+    # Fenêtre d'historique chargée au démarrage pour le premier calcul de
+    # hedge ratio / test de cointégration. Une fenêtre trop courte peut faire
+    # échouer le test de cointégration sur du bruit court terme alors que la
+    # relation est stable sur une période plus longue.
+    bootstrap_history_days: int = field(default_factory=lambda: _get_int("BOOTSTRAP_HISTORY_DAYS", 30))
 
     @property
     def postgres_dsn(self) -> str:

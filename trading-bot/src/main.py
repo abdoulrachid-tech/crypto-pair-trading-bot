@@ -28,22 +28,41 @@ from .stats import compute_hedge_ratio, compute_spread
 
 logger = logging.getLogger(__name__)
 
-HISTORY_MAXLEN = 5000  # nombre de points conservés en mémoire pour les calculs glissants
-
 
 class TradingBot:
     def __init__(self):
         self.exchange = build_exchange()
         self.executor = OrderExecutor(exchange=self.exchange)
-        self.history_a = deque(maxlen=HISTORY_MAXLEN)
-        self.history_b = deque(maxlen=HISTORY_MAXLEN)
+        self.history_maxlen = self._compute_history_maxlen()
+        self.history_a = deque(maxlen=self.history_maxlen)
+        self.history_b = deque(maxlen=self.history_maxlen)
         self.signal_generator: SignalGenerator | None = None
         self.last_recalibration = None
         self.peak_equity = settings.trade_size_quote * 10  # valeur de référence arbitraire pour le drawdown
         self.cumulative_pnl = 0.0
+        # Suivi des prix et trading effectif sont découplés : les prix sont
+        # toujours remontés pour l'affichage, même quand la cointégration
+        # invalide temporairement la stratégie (trading_enabled=False).
+        self.trading_enabled = False
+        self.disable_reason = ""
 
-    def bootstrap_history(self, days_back: int = 10):
+    def _compute_history_maxlen(self) -> int:
+        """
+        Dimensionne le tampon en mémoire pour qu'il puisse effectivement contenir
+        `bootstrap_history_days` de bougies au timeframe configuré — sinon un
+        `deque(maxlen=...)` trop petit tronquerait silencieusement l'historique
+        chargé au démarrage à bien moins que la fenêtre demandée (ce qui faisait
+        échouer le test de cointégration sur une fenêtre plus courte que prévu).
+        Marge de sécurité de 50 % pour couvrir aussi les points accumulés en
+        direct entre deux recalibrages.
+        """
+        seconds_per_candle = self.exchange.parse_timeframe(settings.timeframe)
+        points_needed = (settings.bootstrap_history_days * 24 * 60 * 60) / seconds_per_candle
+        return max(5000, int(points_needed * 1.5))
+
+    def bootstrap_history(self, days_back: int = None):
         """Charge un historique initial pour pouvoir calculer beta/moyenne/écart-type dès le premier cycle."""
+        days_back = days_back or settings.bootstrap_history_days
         logger.info("Chargement de l'historique initial (%s jours)...", days_back)
         now_ms = self.exchange.milliseconds()
         since_ms = now_ms - days_back * 24 * 60 * 60 * 1000
@@ -58,7 +77,8 @@ class TradingBot:
         self.history_b.extend(merged["close_b"].tolist())
 
         self._recalibrate()
-        logger.info("Historique initial chargé : %d points.", len(self.history_a))
+        logger.info("Historique initial chargé : %d points (tampon dimensionné à %d).",
+                    len(self.history_a), self.history_maxlen)
 
     def _recalibrate(self):
         series_a = pd.Series(list(self.history_a))
@@ -68,7 +88,19 @@ class TradingBot:
             logger.warning("Historique insuffisant pour recalibrer (%d points).", len(series_a))
             return
 
-        report = recalibrate(series_a, series_b, lookback=HISTORY_MAXLEN)
+        report = recalibrate(series_a, series_b, lookback=self.history_maxlen)
+
+        if report.should_disable:
+            # On NE tue plus le process : le suivi des prix continue (voir
+            # run_cycle), seule la génération de signaux/exécution est mise
+            # en pause tant que la cointégration reste invalide. On retente
+            # à chaque cycle (last_recalibration n'est pas mis à jour ici).
+            if self.trading_enabled:
+                monitor.send_telegram_alert(f"⏸️ Trading mis en pause : {report.disable_reason}")
+            self.trading_enabled = False
+            self.disable_reason = report.disable_reason
+            logger.warning("Trading en pause (prix toujours suivis) : %s", report.disable_reason)
+            return
 
         if self.signal_generator is None:
             self.signal_generator = SignalGenerator(
@@ -79,9 +111,10 @@ class TradingBot:
         else:
             self.signal_generator.update_parameters(report.beta, report.intercept)
 
-        if report.should_disable:
-            monitor.send_telegram_alert(f"🛑 Bot désactivé automatiquement : {report.disable_reason}")
-            raise SystemExit(f"Arrêt du bot : {report.disable_reason}")
+        if not self.trading_enabled:
+            logger.info("Trading réactivé : cointégration à nouveau valide.")
+        self.trading_enabled = True
+        self.disable_reason = ""
 
         self.last_recalibration = datetime.now(timezone.utc)
         api_client.push_status({"event": "recalibration", "beta": report.beta, "half_life": report.half_life_periods})
@@ -102,6 +135,31 @@ class TradingBot:
 
         if self._should_recalibrate():
             self._recalibrate()
+
+        override = api_client.fetch_manual_override()
+        manually_paused = bool(override.get("paused"))
+        effective_enabled = self.trading_enabled and not manually_paused
+
+        if not effective_enabled or self.signal_generator is None:
+            # Cointégration invalide, historique encore insuffisant, ou pause
+            # manuelle demandée depuis l'interface : pas de signal/exécution,
+            # mais les prix restent remontés pour l'affichage.
+            reason = (override.get("reason") or "pause manuelle") if manually_paused else \
+                (self.disable_reason or "historique insuffisant")
+            logger.info(
+                "[%s] price_a=%.2f price_b=%.2f — trading en pause (%s)",
+                datetime.now(timezone.utc).isoformat(), price_a, price_b, reason,
+            )
+            api_client.push_snapshot({
+                "symbolA": settings.symbol_a, "symbolB": settings.symbol_b,
+                "priceA": price_a, "priceB": price_b,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+            api_client.push_status({
+                "isRunning": True,
+                "meta": {"tradingEnabled": False, "reason": reason, "manuallyPaused": manually_paused},
+            })
+            return
 
         spread_series = compute_spread(
             pd.Series(list(self.history_a)), pd.Series(list(self.history_b)),
@@ -125,6 +183,10 @@ class TradingBot:
             "beta": self.signal_generator.beta,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
+        api_client.push_status({
+            "isRunning": True, "lastZscore": ctx.zscore, "lastSignal": ctx.signal.value,
+            "meta": {"tradingEnabled": True, "manuallyPaused": False},
+        })
 
         result = self.executor.execute(ctx)
         if result:
@@ -145,18 +207,33 @@ class TradingBot:
 
     def run_forever(self):
         logger.info("Démarrage du bot en mode '%s' sur %s / %s", settings.trading_mode, settings.symbol_a, settings.symbol_b)
-        self.bootstrap_history()
+        api_client.push_config({
+            "symbolA": settings.symbol_a, "symbolB": settings.symbol_b, "timeframe": settings.timeframe,
+            "exchangeId": settings.exchange_id, "tradingMode": settings.trading_mode,
+            "liveTradingConfirmed": settings.live_trading_confirmed,
+            "zscoreEntry": settings.zscore_entry, "zscoreExit": settings.zscore_exit,
+            "zscoreStoploss": settings.zscore_stoploss, "tradeSizeQuote": settings.trade_size_quote,
+            "cycleIntervalSeconds": settings.cycle_interval_seconds,
+            "bootstrapHistoryDays": settings.bootstrap_history_days,
+            "recalibrationIntervalHours": settings.recalibration_interval_hours,
+        })
+        try:
+            self.bootstrap_history()
 
-        while True:
-            try:
-                self.run_cycle()
-            except SystemExit:
-                logger.error("Arrêt demandé par le module de recalibrage.")
-                break
-            except Exception as exc:  # noqa: BLE001 — on ne veut jamais planter la boucle sans le savoir
-                monitor.notify_error("run_cycle", exc)
+            while True:
+                try:
+                    self.run_cycle()
+                except SystemExit:
+                    logger.error("Arrêt demandé par le module de recalibrage.")
+                    break
+                except Exception as exc:  # noqa: BLE001 — on ne veut jamais planter la boucle sans le savoir
+                    monitor.notify_error("run_cycle", exc)
 
-            time.sleep(settings.cycle_interval_seconds)
+                time.sleep(settings.cycle_interval_seconds)
+        except SystemExit:
+            logger.error("Arrêt demandé par le module de recalibrage (pendant le chargement initial).")
+        finally:
+            api_client.push_status({"isRunning": False})
 
 
 def _warn_if_live():
