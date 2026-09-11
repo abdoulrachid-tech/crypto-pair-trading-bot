@@ -118,6 +118,14 @@ class TradingBot:
             datetime.now(timezone.utc).isoformat(), price_a, price_b, ctx.zscore, ctx.signal, ctx.current_position,
         )
 
+        api_client.push_snapshot({
+            "symbolA": settings.symbol_a, "symbolB": settings.symbol_b,
+            "priceA": price_a, "priceB": price_b,
+            "spread": float(spread_series.iloc[-1]), "zscore": ctx.zscore,
+            "beta": self.signal_generator.beta,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
         result = self.executor.execute(ctx)
         if result:
             self.cumulative_pnl += result.pnl

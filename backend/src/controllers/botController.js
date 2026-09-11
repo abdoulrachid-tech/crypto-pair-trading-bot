@@ -1,6 +1,7 @@
 const BotLog = require('../models/BotLog');
 const Trade = require('../models/Trade');
 const BotStatus = require('../models/BotStatus');
+const MarketSnapshot = require('../models/MarketSnapshot');
 
 // --- Logs -------------------------------------------------------------
 
@@ -123,9 +124,41 @@ async function getPerformance(req, res) {
   }
 }
 
+// --- Snapshots marché/stratégie (un point par cycle, pour des graphes continus) ---
+
+async function createSnapshot(req, res) {
+  try {
+    const { symbolA, symbolB, priceA, priceB, spread, zscore, beta, timestamp } = req.body;
+
+    if (!symbolA || !symbolB || priceA == null || priceB == null) {
+      return res.status(400).json({ error: 'Champs requis manquants (symbolA, symbolB, priceA, priceB).' });
+    }
+
+    const snapshot = await MarketSnapshot.create({
+      symbolA, symbolB, priceA, priceB, spread, zscore, beta,
+      recordedAt: timestamp ? new Date(timestamp) : new Date(),
+    });
+
+    return res.status(201).json(snapshot);
+  } catch (err) {
+    return res.status(500).json({ error: 'Erreur lors de la création du snapshot.', details: err.message });
+  }
+}
+
+async function listSnapshots(req, res) {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 300, 5000);
+    const snapshots = await MarketSnapshot.find({}).sort({ recordedAt: -1 }).limit(limit);
+    return res.json(snapshots.reverse()); // ordre chronologique croissant, prêt pour un graphique
+  } catch (err) {
+    return res.status(500).json({ error: 'Erreur lors de la récupération des snapshots.', details: err.message });
+  }
+}
+
 module.exports = {
   createLog, listLogs,
   createTrade, listTrades,
   updateStatus, getStatus,
   getPerformance,
+  createSnapshot, listSnapshots,
 };

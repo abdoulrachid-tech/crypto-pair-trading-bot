@@ -6,17 +6,21 @@ import {
  * Mission 14 — "Un graphique en ligne du Z-score de votre paire" avec les
  * seuils d'entrée/sortie de la stratégie tracés en surimpression.
  */
-export default function ZScoreChart({ trades, entryThreshold = 2.0, exitThreshold = 0.5 }) {
-  if (!trades || trades.length === 0) {
+export default function ZScoreChart({ trades, snapshots, entryThreshold = 2.0, exitThreshold = 0.5 }) {
+  const hasSnapshots = snapshots && snapshots.length > 0;
+  const hasTrades = trades && trades.length > 0;
+
+  if (!hasSnapshots && !hasTrades) {
     return <div className="empty-state">Aucun signal enregistré pour le moment.</div>;
   }
 
-  const data = [...trades]
-    .reverse()
-    .map((t) => ({
-      time: new Date(t.executedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
-      zscore: Number(t.zscore?.toFixed(3)),
-    }));
+  const data = (hasSnapshots
+    ? snapshots.map((s) => ({ time: s.recordedAt, zscore: s.zscore }))
+    : [...trades].reverse().map((t) => ({ time: t.executedAt, zscore: t.zscore }))
+  ).map((p) => ({
+    time: new Date(p.time).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }),
+    zscore: Number(p.zscore?.toFixed(3)),
+  }));
 
   return (
     <ResponsiveContainer width="100%" height={280}>

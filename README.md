@@ -205,6 +205,64 @@ cd backend && npm test
 cd frontend && npm test
 ```
 
+## Mettre en ligne (accès public sur internet)
+
+Le projet peut tourner soit en local/LAN (voir ci-dessus), soit exposé
+publiquement, avec les **mêmes fichiers de code** — seules les variables
+d'environnement changent entre les deux. Les deux peuvent même coexister
+(un `.env` local pour le développement, un autre pour la version en ligne).
+
+Le bot Python doit tourner en continu (ce n'est pas une fonction "à la
+demande") : il lui faut un hébergement toujours actif, pas une plateforme
+serverless classique.
+
+**Chemin recommandé (services gérés, gratuit pour démarrer) :**
+
+| Composant | Où l'héberger | Pourquoi |
+|---|---|---|
+| MongoDB | MongoDB Atlas (offre gratuite) | Managed, accessible depuis n'importe où |
+| PostgreSQL | Render, Neon ou Supabase (offre gratuite) | Idem, sans serveur à maintenir |
+| Backend (Express) | Render — type "Web Service" | Processus HTTP persistant |
+| Bot Python | Render — type "Background Worker" (ou un petit VPS) | Doit tourner en continu, pas de port HTTP nécessaire |
+| Frontend (React) | Vercel ou Netlify | Build statique, CDN gratuit, HTTPS automatique |
+
+**Étapes :**
+
+1. Créez les bases sur Atlas et Render/Neon, récupérez leurs chaînes de
+   connexion (`MONGODB_URI`, `POSTGRES_HOST`/`POSTGRES_PORT`/etc.).
+2. Déployez `backend/` sur Render avec ces variables d'environnement :
+   ```
+   NODE_ENV=production
+   MONGODB_URI=<votre URI Atlas>
+   JWT_SECRET=<chaîne aléatoire longue>
+   FRONTEND_ORIGIN=https://mon-app.vercel.app
+   COOKIE_SAME_SITE=none
+   ```
+   (`COOKIE_SAME_SITE=none` est nécessaire car frontend et backend seront sur
+   deux domaines différents ; Render fournit HTTPS automatiquement, condition
+   requise pour `sameSite=none`.)
+3. Déployez `trading-bot/` sur Render en "Background Worker" (commande de
+   démarrage `python -m src.main`) avec vos variables Postgres, vos clés
+   d'exchange, et `TRADING_MODE`/`LIVE_TRADING_CONFIRMED` — laissez ces
+   deux derniers en simulation tant que la stratégie n'est pas validée.
+4. Déployez `frontend/` sur Vercel/Netlify avec une variable
+   `VITE_API_URL=https://mon-backend.onrender.com/api`.
+5. Une fois le backend en ligne, ajoutez son URL publique à la liste
+   `FRONTEND_ORIGIN` si vous voulez garder aussi l'accès local/LAN en
+   parallèle (valeurs séparées par des virgules, voir `.env.example`).
+
+**Alternative — un seul VPS** (DigitalOcean, OVH, Hetzner...) : les 5
+composants tournent sur la même machine (Docker Compose convient bien ici),
+un reverse-proxy Nginx sert le frontend et route `/api` vers le backend sur
+le même domaine — dans ce cas `FRONTEND_ORIGIN` et `VITE_API_URL` peuvent
+rester sur le même domaine et `COOKIE_SAME_SITE=lax` suffit (pas besoin de
+`none`), ce qui simplifie la configuration cookies/CORS.
+
+⚠️ Exposer publiquement un bot capable de passer des ordres réels augmente
+la surface d'attaque (identifiants, clés API exchange) : utilisez des mots
+de passe forts, des clés API à permissions "trading" uniquement (jamais
+"withdraw"), et ne committez jamais de fichier `.env` réel dans un dépôt Git.
+
 ## Passer en mode réel (live trading)
 
 ⚠️ **Lisez l'avertissement sur les risques en haut de ce document avant

@@ -12,9 +12,23 @@ function createApp() {
 
   app.use(express.json());
   app.use(cookieParser());
+  // FRONTEND_ORIGIN accepte une ou plusieurs origines séparées par des
+  // virgules (ex. "http://localhost:5173,http://192.168.1.50:5173,
+  // https://mon-app.vercel.app"), pour supporter local/LAN/en ligne à la fois.
+  const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
   app.use(
     cors({
-      origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
+      origin(origin, callback) {
+        // `origin` est undefined pour les requêtes sans origine (ex. curl, Postman) : on les laisse passer.
+        if (!origin || allowedOrigins.includes(origin)) {
+          return callback(null, true);
+        }
+        return callback(new Error(`Origine non autorisée par CORS : ${origin}`));
+      },
       credentials: true, // indispensable pour que le cookie HttpOnly JWT soit transmis
     })
   );

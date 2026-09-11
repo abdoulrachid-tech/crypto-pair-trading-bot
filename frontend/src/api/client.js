@@ -6,7 +6,10 @@ import axios from 'axios';
  * le JWT (voir Mission 13) lors de chaque requête vers l'API.
  */
 const api = axios.create({
-  baseURL: '/api',
+  // En local (proxy Vite) : baseURL relative '/api'. En ligne, si le frontend
+  // et le backend sont sur des domaines différents, définissez VITE_API_URL
+  // (ex. https://mon-backend.onrender.com/api) dans un .env du frontend.
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   withCredentials: true,
 });
 
@@ -22,6 +25,7 @@ export const botApi = {
   getLogs: (limit = 100) => api.get('/bot/logs', { params: { limit } }),
   getStatus: () => api.get('/bot/status'),
   getPerformance: () => api.get('/bot/performance'),
+  getSnapshots: (limit = 300) => api.get('/bot/snapshots', { params: { limit } }),
 };
 
 export default api;

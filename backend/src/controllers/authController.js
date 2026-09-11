@@ -13,10 +13,16 @@ function signToken(user) {
 }
 
 function setAuthCookie(res, token) {
+  // COOKIE_SAME_SITE : 'lax' (par défaut) convient au local et au LAN en HTTP.
+  // Si le frontend et le backend sont déployés en ligne sur deux domaines
+  // différents, mettez COOKIE_SAME_SITE=none dans backend/.env — cela exige
+  // alors HTTPS des deux côtés (secure devient obligatoire, ce que
+  // NODE_ENV=production fait déjà ci-dessous).
+  const sameSite = process.env.COOKIE_SAME_SITE || 'lax';
   res.cookie('token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    secure: process.env.NODE_ENV === 'production' || sameSite === 'none',
+    sameSite,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 jours
   });
 }

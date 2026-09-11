@@ -61,3 +61,18 @@ def push_status(status: dict) -> bool:
     except requests.RequestException as exc:
         logger.debug("Impossible de pousser le statut vers l'API backend : %s", exc)
         return False
+
+
+def push_snapshot(snapshot: dict) -> bool:
+    """Transmet un point par cycle (prix/spread/zscore), même sans trade, pour des graphes continus."""
+    try:
+        resp = requests.post(
+            f"{settings.backend_api_url}/bot/snapshots",
+            json=snapshot,
+            headers=_headers(),
+            timeout=5,
+        )
+        return resp.ok
+    except requests.RequestException as exc:
+        logger.debug("Impossible de pousser le snapshot vers l'API backend : %s", exc)
+        return False

@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    host: true, // écoute sur toutes les interfaces réseau (accès depuis le LAN, pas seulement localhost)
     proxy: {
       // En développement, les appels /api/* du frontend sont redirigés vers le backend Express
       // (voir Mission 16 pour l'équivalent en production via Nginx).
